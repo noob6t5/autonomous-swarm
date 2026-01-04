@@ -2,6 +2,8 @@ import random
 import math
 import matplotlib.pyplot as plt
 
+## Author : noob6t5 aka Sangharsha
+
 # ---------------- CONFIG ----------------
 WORLD = 100
 N_DEF = 12
