@@ -21,7 +21,7 @@ ATTACKER_FATIGUE_PROB = 0.002
 
 MAX_STEPS = 600
 # --------------------------------------
-
+ 
 
 class Agent:
     def __init__(self, x, y, role):
