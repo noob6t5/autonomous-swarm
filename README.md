@@ -2,6 +2,8 @@
 
 # Autonomous Defensive Swarm Simulation
 
+<img width="1536" height="1024" alt="auto" src="https://github.com/user-attachments/assets/aaa002bc-88c0-4570-83ce-f812229623da" />
+
 ## Overview
 This project simulates an **autonomous defensive swarm** tasked with protecting a central asset against adaptive attackers and decoys. The simulation demonstrates the effects of **leader-based vs leaderless coordination**, **pressure-adaptive responses**, and **symmetry-breaking strategies** on mission success.  
 
