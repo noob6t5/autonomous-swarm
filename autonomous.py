@@ -2,14 +2,11 @@ import random
 import math
 import matplotlib.pyplot as plt
 
-# @1 bug@1  with leader
-# ---------------- CONFIG haru  ----------------
+# ---------------- CONFIG ----------------
 WORLD = 100
 N_DEF = 12
 N_ATK = 8
 N_DECOY = 3
-
-LEADER_BASED = False
 
 DETECTION_RADIUS = 5
 ATTACK_SUCCESS_RADIUS = 4
@@ -20,9 +17,10 @@ PRESSURE_DECAY = 0.95
 
 ATTACKER_KILL_PROB = 0.06
 LEADER_KILL_PROB = 0.002
+ATTACKER_FATIGUE_PROB = 0.002
 
 MAX_STEPS = 600
-# ---------------------------------------
+# --------------------------------------
 
 
 class Agent:
@@ -47,24 +45,22 @@ class Agent:
 
 
 class SwarmEnv:
-    def __init__(self):
+    def __init__(self, leader_based: bool):
+        self.leader_based = leader_based
         self.phase = "STEALTH"
         self.pressure = 0
 
-        # Initialize defenders
         self.defenders = [
             Agent(random.uniform(40, 60), random.uniform(40, 60), "DEF")
             for _ in range(N_DEF)
         ]
-        self.leader = self.defenders[0] if LEADER_BASED else None
+        self.leader = self.defenders[0] if leader_based else None
 
-        # Initialize attackers
         self.attackers = [
             Agent(random.uniform(0, 20), random.uniform(0, 20), "ATK")
             for _ in range(N_ATK)
         ]
 
-        # Decoys haru yeta 
         self.decoys = [
             Agent(random.uniform(0, 20), random.uniform(0, 20), "DEC")
             for _ in range(N_DECOY)
@@ -76,7 +72,6 @@ class SwarmEnv:
         return x, y
 
     def step(self):
-        # ---- Phase logic ----
         if self.pressure > PRESSURE_ATTACK:
             self.phase = "ATTACK"
         elif self.pressure < PRESSURE_RELAX:
@@ -85,10 +80,9 @@ class SwarmEnv:
         def_cx, def_cy = self.centroid(self.defenders)
         atk_cx, atk_cy = self.centroid(self.attackers + self.decoys)
 
-        # ---- Defenders ----
-        followers = [d for d in self.defenders if d != self.leader]
-
-        if LEADER_BASED and self.leader:
+        # Defenders
+        if self.leader_based and self.leader:
+            followers = [d for d in self.defenders if d is not self.leader]
             self.leader.move_toward(atk_cx, atk_cy, 0.6)
             for f in followers:
                 f.move_toward(self.leader.x, self.leader.y, 0.5)
@@ -96,18 +90,21 @@ class SwarmEnv:
             for d in self.defenders:
                 d.move_toward(def_cx, def_cy, 0.4)
 
-        # ---- Attackers ----
+        # Attackers
         for a in self.attackers[:]:
             if self.phase == "STEALTH":
                 a.wander(0.3)
             else:
                 a.move_toward(def_cx, def_cy, 0.9)
 
-        # ---- Decoys ----
+            if random.random() < ATTACKER_FATIGUE_PROB:
+                self.attackers.remove(a)
+
+        # Decoys
         for d in self.decoys:
             d.wander(0.6)
 
-        # ---- Detection & Attrition ----
+        # Detection & attrition
         for a in self.attackers[:]:
             detected = False
             for d in self.defenders:
@@ -120,32 +117,26 @@ class SwarmEnv:
             if not detected:
                 self.pressure -= 0.3
 
-        # ---- Leader vulnerability ----
-        if LEADER_BASED and self.leader and random.random() < LEADER_KILL_PROB:
+        # Leader vulnerability
+        if self.leader_based and self.leader and random.random() < LEADER_KILL_PROB:
             self.defenders.remove(self.leader)
-            if self.defenders:
-                self.leader = random.choice(self.defenders)
-            else:
-                self.leader = None
+            self.leader = random.choice(self.defenders) if self.defenders else None
 
-        # ---- Pressure decay ----
         self.pressure = max(0, self.pressure * PRESSURE_DECAY)
-
-    def defense_lost(self):
-        # Attackers penetrate core
-        for a in self.attackers:
-            if math.hypot(a.x - 50, a.y - 50) < ATTACK_SUCCESS_RADIUS:
-                return True
-        return False
 
     def defense_won(self):
         return len(self.attackers) == 0
 
-def run_episode(seed, leader_based=True):
+    def defense_lost(self):
+        return any(
+            math.hypot(a.x - 50, a.y - 50) < ATTACK_SUCCESS_RADIUS
+            for a in self.attackers
+        )
+
+
+def run_episode(seed, leader_based):
     random.seed(seed)
-    env = SwarmEnv()
-    global LEADER_BASED
-    LEADER_BASED = leader_based
+    env = SwarmEnv(leader_based)
 
     for t in range(MAX_STEPS):
         env.step()
@@ -156,23 +147,22 @@ def run_episode(seed, leader_based=True):
 
     return "TIMEOUT", MAX_STEPS
 
-def evaluate(control_mode, runs=50):
+
+def evaluate(leader_based, runs=50):
     wins = 0
     times = []
 
     for s in range(runs):
-        result, t = run_episode(s, leader_based=(control_mode == "leader"))
+        result, t = run_episode(s, leader_based)
         if result == "WIN":
             wins += 1
         times.append(t)
 
-    win_rate = wins / runs
-    avg_time = sum(times) / len(times)
-    return win_rate, avg_time
+    return wins / runs, sum(times) / len(times)
 
 
-def visualize():
-    env = SwarmEnv()
+def visualize(leader_based):
+    env = SwarmEnv(leader_based)
     plt.ion()
     fig, ax = plt.subplots()
 
@@ -182,7 +172,7 @@ def visualize():
         ax.set_xlim(0, WORLD)
         ax.set_ylim(0, WORLD)
 
-        # Core
+        # Protected core
         ax.scatter(50, 50, c="green", s=200, marker="X", label="Protected Core")
 
         # Defenders
@@ -195,7 +185,7 @@ def visualize():
         )
 
         # Leader
-        if LEADER_BASED and env.leader:
+        if leader_based and env.leader:
             ax.scatter(
                 env.leader.x,
                 env.leader.y,
@@ -224,11 +214,14 @@ def visualize():
             label="Decoys",
         )
 
-        ax.set_title(f"Autonomous Defensive Swarm | Pressure: {int(env.pressure)}")
-        ax.legend(loc="upper right")
+        # Legend
+        ax.legend(loc="upper right", fontsize=8)
+
+        ax.set_title(
+            f"Autonomous Defensive Swarm | Phase: {env.phase} | Pressure: {int(env.pressure)}"
+        )
         plt.pause(0.05)
 
-        # Mission end
         if env.defense_won():
             ax.set_title("DEFENSE SUCCESS")
             plt.pause(2)
@@ -237,16 +230,15 @@ def visualize():
             ax.set_title("DEFENSE FAILED")
             plt.pause(2)
             break
+        if t == MAX_STEPS - 1:
+            ax.set_title("MISSION TIMEOUT")
+            plt.pause(2)
 
     plt.ioff()
     plt.show()
 
 
 if __name__ == "__main__":
-    leaderless = evaluate("leaderless")
-    leader = evaluate("leader")
-
-    print("Leaderless:", leaderless)
-    print("Leader-based:", leader)
-    visualize()
-    
+    print("Leaderless:", evaluate(False))
+    print("Leader-based:", evaluate(True))
+    visualize(True)
